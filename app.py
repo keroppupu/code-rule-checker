@@ -128,6 +128,13 @@ async def api_check_form(
                 rules_list.append(parsed_json)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"規約JSONファイル {r_file.filename} の解析に失敗しました: {str(e)}")
+        finally:
+            await r_file.close()
+
+    if code_file:
+        await code_file.close()
+    if prompt_file:
+        await prompt_file.close()
 
     if not rules_list:
         raise HTTPException(status_code=400, detail="規約JSONが空または指定されていません。")
