@@ -1,0 +1,14 @@
+[
+  {
+    "id": "SEC-001",
+    "name": "SQLインジェクション対策",
+    "severity": "critical",
+    "description": "SQLクエリの構築に文字列連結やf-stringsを使用してはならず、必ずパラメータ化クエリまたはORMを使用すること。"
+  },
+  {
+    "id": "SEC-002",
+    "name": "ハードコードされた認証情報の禁止",
+    "severity": "critical",
+    "description": "APIキー、パスワード、秘密鍵などをコード内に直接記述してはならない。環境変数等から取得すること。"
+  }
+]

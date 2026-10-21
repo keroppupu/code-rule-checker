@@ -1,0 +1,15 @@
+services:
+  code-rule-checker:
+    build: .
+    container_name: code_rule_checker_app
+    ports:
+      - "8030:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    restart: unless-stopped
+    # RHEL / Podman / SELinux対応 (必要に応じてコメント解除またはボリュームマウント時に :z を付与)
+    security_opt:
+      - label=disable

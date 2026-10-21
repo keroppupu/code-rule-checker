@@ -1,0 +1,14 @@
+[
+  {
+    "id": "STYLE-001",
+    "name": "関数型アノテーションの必須化",
+    "severity": "warning",
+    "description": "すべての関数定義には引数と戻り値の型アノテーション（Type Hints）を付与すること。"
+  },
+  {
+    "id": "STYLE-002",
+    "name": "Docstring記述規約",
+    "severity": "info",
+    "description": "パブリックな関数やクラスには概要、引数、戻り値を明記したDocstringを記述すること。"
+  }
+]

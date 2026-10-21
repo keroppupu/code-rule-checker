@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Code Rule Checker</title>
+    <!-- ローカル静的アセット（RHELオフライン/イントラネット環境対応） -->
+    <script src="/static/vendor/tailwind.min.js"></script>
+    <script src="/static/vendor/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/vendor/all.min.css">
+    <style>
+        .prose pre { background-color: #1e293b; color: #f8fafc; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+        .prose code { color: #0284c7; font-family: monospace; }
+        .prose pre code { color: inherit; }
+        .prose table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+        .prose th, .prose td { border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem; text-align: left; }
+        .prose th { background-color: #f1f5f9; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
+
+    <!-- Header -->
+    <header class="bg-indigo-700 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-shield-halved text-2xl text-indigo-200"></i>
+                <h1 class="text-xl font-bold tracking-tight">AI Code Rule Checker</h1>
+            </div>
+            <div class="text-sm bg-indigo-800 px-3 py-1.5 rounded-full text-indigo-100 flex items-center gap-2">
+                <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>API & MCP Ready</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: Settings & Input Forms -->
+        <div class="lg:col-span-5 space-y-6">
+            
+            <!-- LLM Backend Configuration -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-base font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-server text-indigo-600"></i> LLM 接続設定 (LAN)
+                </h2>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">バックエンド</label>
+                        <select id="backend_type" class="w-full text-sm border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500">
+                            <option value="ollama" selected>Ollama</option>
+                            <option value="vllm">vLLM (OpenAI API)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">モデル名</label>
+                        <input type="text" id="model_name" value="qwen3.5:9b" placeholder="例: qwen2.5-coder:7b" class="w-full text-sm border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">エンドポイント URL</label>
+                    <input type="text" id="base_url" value="http://host.docker.internal:11434" placeholder="例: http://192.168.1.100:11434" class="w-full text-sm border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500">
+                    <p class="text-[11px] text-slate-500 mt-1">※Docker内からホストPCを見る場合は host.docker.internal を指定できます</p>
+                </div>
+            </div>
+
+            <!-- Upload Code -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-base font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-code text-indigo-600"></i> ソースコード
+                </h2>
+                <div class="border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-lg p-4 text-center cursor-pointer transition-colors bg-slate-50" id="codeDropZone">
+                    <i class="fa-solid fa-file-code text-2xl text-slate-400 mb-1"></i>
+                    <p class="text-xs text-slate-600" id="codeFileNameDisplay">ファイルをドラッグ＆ドロップ または クリックして選択</p>
+                    <input type="file" id="codeFileInput" class="hidden">
+                </div>
+                <div class="mt-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">または直接ペースト:</label>
+                    <textarea id="codeDirectInput" rows="6" placeholder="// コードを直接貼り付け可能" class="w-full text-xs font-mono border-slate-300 rounded-lg p-2.5 border focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+            </div>
+
+            <!-- Upload Multiple Rule JSONs -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-book-bookmark text-indigo-600"></i> 規約 JSON（複数可）
+                    </h2>
+                    <span id="rulesCountBadge" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">0 件選択中</span>
+                </div>
+                
+                <div class="border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-lg p-4 text-center cursor-pointer transition-colors bg-slate-50" id="ruleDropZone">
+                    <i class="fa-solid fa-file-invoice text-2xl text-slate-400 mb-1"></i>
+                    <p class="text-xs text-slate-600">複数の規約 JSON をドラッグ＆ドロップ</p>
+                    <input type="file" id="ruleFilesInput" multiple accept=".json" class="hidden">
+                </div>
+
+                <div id="ruleFileList" class="mt-3 space-y-1.5 max-h-36 overflow-y-auto"></div>
+            </div>
+
+            <!-- Custom Prompt File or Direct Text -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-base font-semibold text-slate-800 mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-2">
+                        <i class="fa-solid fa-file-lines text-indigo-600"></i> プロンプト指定（任意）
+                    </span>
+                    <span class="text-[11px] text-slate-400 font-normal">未指定時はデフォルト標準</span>
+                </h2>
+                <div class="border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-lg p-3 text-center cursor-pointer transition-colors bg-slate-50 mb-2" id="promptDropZone">
+                    <i class="fa-solid fa-arrow-up-from-bracket text-lg text-slate-400 mb-1"></i>
+                    <p class="text-xs text-slate-600" id="promptFileNameDisplay">プロンプトテキストファイル（.txt）を選択 / ドロップ</p>
+                    <input type="file" id="promptFileInput" accept=".txt,.md" class="hidden">
+                </div>
+                <input type="text" id="promptFilePathInput" placeholder="またはサーバ上のファイルパス: /path/to/prompt.txt" class="w-full text-xs border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500 mb-2">
+                <textarea id="promptDirectInput" rows="2" placeholder="またはプロンプトを直接入力..." class="w-full text-xs border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500"></textarea>
+            </div>
+
+            <!-- Submit Button -->
+            <button id="runCheckBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-xl shadow transition duration-150 flex items-center justify-center gap-2 text-sm">
+                <i class="fa-solid fa-play"></i>
+                <span>規約準拠チェックを実行</span>
+            </button>
+        </div>
+
+        <!-- Right Column: Results & Export -->
+        <div class="lg:col-span-7 flex flex-col space-y-4">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex-1 flex flex-col min-h-[500px]">
+                
+                <!-- Action Bar -->
+                <div class="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                    <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-clipboard-check text-emerald-600"></i> 検証レポート
+                    </h2>
+                    <div class="flex items-center gap-2" id="downloadButtons" style="display: none;">
+                        <button id="btnDownloadMd" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg border border-slate-300 flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-download"></i> Markdown
+                        </button>
+                        <button id="btnDownloadHtml" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium px-3 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-file-code"></i> HTML
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Result View Container -->
+                <div class="flex-1 mt-4 overflow-y-auto relative">
+                    <!-- Placeholder initial -->
+                    <div id="emptyPlaceholder" class="h-full flex flex-col items-center justify-center text-slate-400 py-16">
+                        <i class="fa-solid fa-magnifying-glass-arrow-right text-4xl mb-3 text-slate-300"></i>
+                        <p class="text-sm">左側でコードと規約JSONを指定してチェックを実行してください</p>
+                    </div>
+
+                    <!-- Loading Spinner -->
+                    <div id="loadingSpinner" class="hidden h-full flex flex-col items-center justify-center text-slate-600 py-16">
+                        <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-3"></div>
+                        <p class="text-sm font-medium">生成AIが規約とコードを分析中...</p>
+                        <p class="text-xs text-slate-400 mt-1">（モデルのサイズや処理内容により数十秒かかる場合があります）</p>
+                    </div>
+
+                    <!-- Report Markdown Content -->
+                    <div id="reportContent" class="prose max-w-none text-sm hidden"></div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-400">
+        AI Code Rule Checker &copy; 2026 - Ollama / vLLM / MCP Ready
+    </footer>
+
+    <script>
+        let ruleFilesStore = [];
+        let codeFileStore = null;
+        let promptFileStore = null;
+        let lastReportMarkdown = "";
+
+        // Elements
+        const codeDropZone = document.getElementById("codeDropZone");
+        const codeFileInput = document.getElementById("codeFileInput");
+        const codeFileNameDisplay = document.getElementById("codeFileNameDisplay");
+        const codeDirectInput = document.getElementById("codeDirectInput");
+
+        const promptDropZone = document.getElementById("promptDropZone");
+        const promptFileInput = document.getElementById("promptFileInput");
+        const promptFileNameDisplay = document.getElementById("promptFileNameDisplay");
+        const promptFilePathInput = document.getElementById("promptFilePathInput");
+        const promptDirectInput = document.getElementById("promptDirectInput");
+
+        const ruleDropZone = document.getElementById("ruleDropZone");
+        const ruleFilesInput = document.getElementById("ruleFilesInput");
+        const ruleFileList = document.getElementById("ruleFileList");
+        const rulesCountBadge = document.getElementById("rulesCountBadge");
+
+        // Prompt File Handling
+        promptDropZone.addEventListener("click", () => promptFileInput.click());
+        promptFileInput.addEventListener("change", (e) => {
+            if (e.target.files.length > 0) {
+                promptFileStore = e.target.files[0];
+                promptFileNameDisplay.innerHTML = `<span class="font-semibold text-indigo-600"><i class="fa-solid fa-file-lines"></i> ${promptFileStore.name}</span> (${(promptFileStore.size/1024).toFixed(1)} KB)`;
+            }
+        });
+        promptDropZone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            promptDropZone.classList.add("border-indigo-500", "bg-indigo-50");
+        });
+        promptDropZone.addEventListener("dragleave", (e) => {
+            e.preventDefault();
+            promptDropZone.classList.remove("border-indigo-500", "bg-indigo-50");
+        });
+        promptDropZone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            promptDropZone.classList.remove("border-indigo-500", "bg-indigo-50");
+            if (e.dataTransfer.files.length > 0) {
+                promptFileStore = e.dataTransfer.files[0];
+                promptFileNameDisplay.innerHTML = `<span class="font-semibold text-indigo-600"><i class="fa-solid fa-file-lines"></i> ${promptFileStore.name}</span> (${(promptFileStore.size/1024).toFixed(1)} KB)`;
+            }
+        });
+
+        const runCheckBtn = document.getElementById("runCheckBtn");
+        const emptyPlaceholder = document.getElementById("emptyPlaceholder");
+        const loadingSpinner = document.getElementById("loadingSpinner");
+        const reportContent = document.getElementById("reportContent");
+        const downloadButtons = document.getElementById("downloadButtons");
+        const btnDownloadMd = document.getElementById("btnDownloadMd");
+        const btnDownloadHtml = document.getElementById("btnDownloadHtml");
+
+        // Code File Select Handling
+        codeDropZone.addEventListener("click", () => codeFileInput.click());
+        codeFileInput.addEventListener("change", (e) => {
+            if (e.target.files.length > 0) {
+                codeFileStore = e.target.files[0];
+                codeFileNameDisplay.innerHTML = `<span class="font-semibold text-indigo-600"><i class="fa-solid fa-file"></i> ${codeFileStore.name}</span> (${(codeFileStore.size/1024).toFixed(1)} KB)`;
+            }
+        });
+
+        // Code Drag & Drop Handling
+        codeDropZone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            codeDropZone.classList.add("border-indigo-500", "bg-indigo-50");
+        });
+        codeDropZone.addEventListener("dragleave", (e) => {
+            e.preventDefault();
+            codeDropZone.classList.remove("border-indigo-500", "bg-indigo-50");
+        });
+        codeDropZone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            codeDropZone.classList.remove("border-indigo-500", "bg-indigo-50");
+            if (e.dataTransfer.files.length > 0) {
+                codeFileStore = e.dataTransfer.files[0];
+                codeFileNameDisplay.innerHTML = `<span class="font-semibold text-indigo-600"><i class="fa-solid fa-file"></i> ${codeFileStore.name}</span> (${(codeFileStore.size/1024).toFixed(1)} KB)`;
+            }
+        });
+
+        // Rules Multi-Files Select Handling
+        ruleDropZone.addEventListener("click", () => ruleFilesInput.click());
+        ruleFilesInput.addEventListener("change", (e) => {
+            handleRuleFiles(e.target.files);
+        });
+
+        // Rules Drag & Drop Handling
+        ruleDropZone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            ruleDropZone.classList.add("border-indigo-500", "bg-indigo-50");
+        });
+        ruleDropZone.addEventListener("dragleave", (e) => {
+            e.preventDefault();
+            ruleDropZone.classList.remove("border-indigo-500", "bg-indigo-50");
+        });
+        ruleDropZone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            ruleDropZone.classList.remove("border-indigo-500", "bg-indigo-50");
+            if (e.dataTransfer.files.length > 0) {
+                handleRuleFiles(e.dataTransfer.files);
+            }
+        });
+
+        function handleRuleFiles(files) {
+            for (let f of files) {
+                if (f.name.endsWith('.json') && !ruleFilesStore.some(existing => existing.name === f.name)) {
+                    ruleFilesStore.push(f);
+                }
+            }
+            renderRuleList();
+        }
+
+        function renderRuleList() {
+            rulesCountBadge.innerText = `${ruleFilesStore.length} 件選択中`;
+            ruleFileList.innerHTML = "";
+            ruleFilesStore.forEach((file, index) => {
+                const item = document.createElement("div");
+                item.className = "flex items-center justify-between text-xs bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded";
+                item.innerHTML = `
+                    <span class="truncate max-w-[200px]"><i class="fa-solid fa-file-code text-indigo-500 mr-1.5"></i>${file.name}</span>
+                    <button type="button" class="text-rose-500 hover:text-rose-700 ml-2" onclick="removeRuleFile(${index})"><i class="fa-solid fa-xmark"></i></button>
+                `;
+                ruleFileList.appendChild(item);
+            });
+        }
+
+        window.removeRuleFile = function(index) {
+            ruleFilesStore.splice(index, 1);
+            renderRuleList();
+        };
+
+        // Run Check Request
+        runCheckBtn.addEventListener("click", async () => {
+            const backendType = document.getElementById("backend_type").value;
+            const modelName = document.getElementById("model_name").value.trim();
+            const baseUrl = document.getElementById("base_url").value.trim();
+            const directCode = codeDirectInput.value.trim();
+
+            if (!codeFileStore && !directCode) {
+                alert("チェック対象のソースコードをアップロードまたは入力してください。");
+                return;
+            }
+
+            if (ruleFilesStore.length === 0) {
+                alert("規約JSONファイルを少なくとも1つ指定してください。");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("backend_type", backendType);
+            formData.append("model", modelName);
+            formData.append("base_url", baseUrl);
+
+            if (codeFileStore) {
+                formData.append("code_file", codeFileStore);
+            } else {
+                formData.append("code_text", directCode);
+                formData.append("code_filename", "direct_input.txt");
+            }
+
+            for (let f of ruleFilesStore) {
+                formData.append("rule_files", f);
+            }
+
+            // Prompt Handling
+            if (promptFileStore) {
+                formData.append("prompt_file", promptFileStore);
+            }
+            const promptFilePath = promptFilePathInput.value.trim();
+            if (promptFilePath) {
+                formData.append("prompt_file_path", promptFilePath);
+            }
+            const promptDirect = promptDirectInput.value.trim();
+            if (promptDirect) {
+                formData.append("custom_prompt", promptDirect);
+            }
+
+            // UI State to Loading
+            emptyPlaceholder.classList.add("hidden");
+            reportContent.classList.add("hidden");
+            loadingSpinner.classList.remove("hidden");
+            downloadButtons.style.display = "none";
+            runCheckBtn.disabled = true;
+            runCheckBtn.classList.add("opacity-50", "cursor-not-allowed");
+
+            try {
+                const response = await fetch("/api/check", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTPエラー: ${response.status}`);
+                }
+
+                const data = await response.json();
+                lastReportMarkdown = data.report;
+
+                // Render Markdown to HTML
+                reportContent.innerHTML = marked.parse(lastReportMarkdown);
+                reportContent.classList.remove("hidden");
+                downloadButtons.style.display = "flex";
+            } catch (err) {
+                alert("チェック処理中にエラーが発生しました: " + err.message);
+                emptyPlaceholder.classList.remove("hidden");
+            } finally {
+                loadingSpinner.classList.add("hidden");
+                runCheckBtn.disabled = false;
+                runCheckBtn.classList.remove("opacity-50", "cursor-not-allowed");
+            }
+        });
+
+        // Download Markdown
+        btnDownloadMd.addEventListener("click", () => {
+            if (!lastReportMarkdown) return;
+            const blob = new Blob([lastReportMarkdown], { type: "text/markdown;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `rule_check_report_${new Date().toISOString().slice(0,10)}.md`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Download HTML
+        btnDownloadHtml.addEventListener("click", () => {
+            if (!lastReportMarkdown) return;
+            const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Code Rule Check Report</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 45px; }
+pre { background-color: #1e293b; color: #f8fafc; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+code { color: #0284c7; font-family: monospace; }
+pre code { color: inherit; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem; text-align: left; }
+th { background-color: #f1f5f9; }
+blockquote { border-left: 4px solid #cbd5e1; padding-left: 1rem; color: #64748b; margin: 1rem 0; }
+</style>
+</head>
+<body>
+${marked.parse(lastReportMarkdown)}
+</body>
+</html>`;
+            const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `rule_check_report_${new Date().toISOString().slice(0,10)}.html`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>

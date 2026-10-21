@@ -1,0 +1,12 @@
+[
+  {
+    "id": "COBOL-001",
+    "name": "DIVISION記述規約",
+    "description": "IDENTIFICATION DIVISION、DATA DIVISION、PROCEDURE DIVISIONが正しい順序で定義されていること。"
+  },
+  {
+    "id": "COBOL-002",
+    "name": "EXEC SQLコミット規約",
+    "description": "Pro*COBOLにおける埋め込みSQL（EXEC SQL ... END-EXEC）ブロックでは、トランザクションの適切な制御（COMMITまたはROLLBACK）を考慮すること。"
+  }
+]
