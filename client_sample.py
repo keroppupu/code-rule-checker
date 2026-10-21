@@ -1,174 +1,215 @@
 #!/usr/bin/env python3
 """
-AI Code Rule Checker - API 呼び出しサンプルスクリプト
+AI Code Rule Checker - CLI クライアントスクリプト
 
-本スクリプトは、FastAPIで公開されている以下の2つのエンドポイントを呼び出すサンプルです:
-1. /api/v1/verify : JSONボディによる直接呼び出し（規約JSONオブジェクトを直接送信）
-2. /api/check     : multipart/form-data による呼び出し（ローカルのファイル一式をアップロード）
+引数で以下を指定して、コンテナ/APIサーバーへ検証リクエストを送信します:
+1. ソースコードのフルパス (--code)
+2. 規約JSONが格納されたディレクトリ (--rules-dir, 直下の全 .json を自動読み込み)
+3. プロンプトテキストファイルのフルパス (--prompt, 任意)
+
+利用例:
+  python3 client_sample.py \
+    --code /path/to/my_program.c \
+    --rules-dir /path/to/rules \
+    --prompt /path/to/custom_prompt.txt \
+    --server http://localhost:8030 \
+    --output result.md
 """
 
 import sys
 import json
+import argparse
 import urllib.request
 import urllib.error
 from pathlib import Path
+from typing import Optional
 
-# API サーバーのURL（ローカルまたはRHELサーバーのIP）
-SERVER_URL = "http://localhost:8030"
 
-def sample_verify_json():
-    """
-    エンドポイント: POST /api/v1/verify
-    JSONペイロードを送信してチェックを実行する例
-    """
-    print("\n==========================================")
-    print("1. JSON API (/api/v1/verify) の呼び出しテスト")
-    print("==========================================")
+def run_code_check(
+    code_path: Path,
+    rules_dir: Path,
+    prompt_path: Optional[Path] = None,
+    server_url: str = "http://localhost:8030",
+    backend_type: str = "ollama",
+    base_url: str = "http://host.docker.internal:11434",
+    model: str = "qwen3.5:9b",
+    output_path: Optional[Path] = None
+):
+    # 1. ソースコードファイルの存在確認と読み込み
+    if not code_path.is_file():
+        print(f"エラー: 指定されたソースコードファイルが存在しません: {code_path}", file=sys.stderr)
+        sys.exit(1)
 
-    url = f"{SERVER_URL}/api/v1/verify"
+    print(f"[1/4] ソースコードを読み込み中: {code_path.resolve()}")
+    try:
+        code_content = code_path.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        print(f"エラー: ソースコードの読み取りに失敗しました: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    # チェック対象のコード (例: C言語)
-    target_code = """
-#include <stdio.h>
-#include <string.h>
+    # 2. 規約ディレクトリ内の全JSONファイルの走査と読み込み
+    if not rules_dir.is_dir():
+        print(f"エラー: 指定された規約ディレクトリが存在しません: {rules_dir}", file=sys.stderr)
+        sys.exit(1)
 
-void process_data(char *input) {
-    char buffer[64];
-    // 脆弱性: バッファサイズを考慮しないstrcpy
-    strcpy(buffer, input);
-    printf("Processed: %s\\n", buffer);
-}
-"""
+    rule_files = sorted(rules_dir.glob("*.json"))
+    if not rule_files:
+        print(f"エラー: 指定ディレクトリ配下に .json ファイルが見つかりません: {rules_dir}", file=sys.stderr)
+        sys.exit(1)
 
-    # 適用する複数の規約 (JSONリスト)
-    rules = [
-        {
-            "id": "SEC-C-001",
-            "name": "安全でない文字列関数の禁止",
-            "severity": "critical",
-            "description": "バッファオーバーフロー防止のため、strcpyやstrcatの使用を禁止し、strncpyやsnprintfを使用すること。"
-        },
-        {
-            "id": "STYLE-C-002",
-            "name": "ポインタ引数のNULLチェック",
-            "severity": "warning",
-            "description": "ポインタを受け取る関数では処理開始時にNULLポインタ検証を行うこと。"
-        }
-    ]
+    print(f"[2/4] 規約ディレクトリ配下の JSON ファイルを探索中: {rules_dir.resolve()}")
+    combined_rules = []
+    for r_file in rule_files:
+        try:
+            raw_data = json.loads(r_file.read_text(encoding="utf-8", errors="replace"))
+            if isinstance(raw_data, list):
+                combined_rules.extend(raw_data)
+                print(f"  - {r_file.name}: {len(raw_data)} 件の規約をロード")
+            elif isinstance(raw_data, dict):
+                combined_rules.append(raw_data)
+                print(f"  - {r_file.name}: 1 件の規約をロード")
+        except Exception as e:
+            print(f"警告: 規約ファイル '{r_file.name}' の解析をスキップしました: {e}", file=sys.stderr)
 
+    if not combined_rules:
+        print("エラー: 有効な規約定義が1件も読み込めませんでした。", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"  => 合計 {len(combined_rules)} 件のコーディング規約を適用します。")
+
+    # 3. プロンプトファイルの読み込み (指定がある場合)
+    custom_prompt_text = None
+    if prompt_path:
+        if not prompt_path.is_file():
+            print(f"エラー: 指定されたプロンプトファイルが存在しません: {prompt_path}", file=sys.stderr)
+            sys.exit(1)
+        print(f"[3/4] プロンプトファイルを読み込み中: {prompt_path.resolve()}")
+        try:
+            custom_prompt_text = prompt_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            print(f"エラー: プロンプトファイルの読み取りに失敗しました: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print("[3/4] プロンプトファイル: 未指定 (標準デフォルトプロンプトを使用)")
+
+    # 4. APIサーバーへリクエスト送信
+    api_endpoint = f"{server_url.rstrip('/')}/api/v1/verify"
     payload = {
-        "code": target_code,
-        "filename": "sample_buffer.c",
-        "rules": rules,
-        "backend_type": "ollama",
-        "base_url": "http://host.docker.internal:11434",
-        "model": "qwen3.5:9b"
+        "code": code_content,
+        "filename": code_path.name,
+        "rules": combined_rules,
+        "backend_type": backend_type,
+        "base_url": base_url,
+        "model": model,
+        "custom_prompt": custom_prompt_text
     }
 
+    print(f"[4/4] APIサーバーへ検証リクエストを送信中 ({api_endpoint})...")
+    print(f"      LLMバックエンド: {backend_type} ({model})")
+    
     req = urllib.request.Request(
-        url,
+        api_endpoint,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"}
     )
 
     try:
-        print(f"送信中: {url} (対象ファイル: sample_buffer.c)...")
-        with urllib.request.urlopen(req, timeout=300) as res:
-            res_data = json.loads(res.read().decode("utf-8"))
-            print("\n[レスポンスステータス]:", res_data.get("status"))
-            print("[ファイル名]:", res_data.get("filename"))
-            print("\n--- レポート内容 (先頭一部抜粋) ---")
+        # LLM推論時間を考慮しタイムアウトを300秒に設定
+        with urllib.request.urlopen(req, timeout=300) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
             report = res_data.get("report", "")
-            print(report[:800] + ("..." if len(report) > 800 else ""))
             
-            # 結果をMarkdownファイルとしてローカル保存
-            output_file = "verify_result.md"
-            with open(output_file, "w", encoding="utf-8") as f:
-                f.write(report)
-            print(f"\n=> 完全なレポートを '{output_file}' に保存しました。")
+            print("\n" + "=" * 60)
+            print("                 検証レポート (プレビュー)")
+            print("=" * 60)
+            print(report[:1200] + ("\n...[以下省略]..." if len(report) > 1200 else ""))
+            print("=" * 60)
+
+            # ファイル出力指定がある場合、またはデフォルト保存
+            out_file = output_path or Path(f"report_{code_path.stem}.md")
+            out_file.write_text(report, encoding="utf-8")
+            print(f"\n✅ 完全な検証レポートを保存しました: {out_file.resolve()}\n")
+
     except urllib.error.HTTPError as e:
-        print(f"HTTPエラー発生 ({e.code}):", e.read().decode("utf-8", errors="replace"))
+        error_msg = e.read().decode("utf-8", errors="replace")
+        print(f"\n❌ APIエラー発生 (HTTP {e.code}): {error_msg}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"\n❌ 接続エラー: APIサーバー ({server_url}) に接続できませんでした: {e.reason}", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
-        print("エラー発生:", str(e))
+        print(f"\n❌ 予期せぬエラーが発生しました: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
-def sample_check_multipart():
-    """
-    エンドポイント: POST /api/check
-    実際のファイルを multipart/form-data でアップロードしてチェックを実行する例
-    """
-    print("\n==========================================")
-    print("2. Multipart API (/api/check) ファイルアップロードテスト")
-    print("==========================================")
-
-    url = f"{SERVER_URL}/api/check"
-
-    # サンプルファイル群のパス (存在確認)
-    base_dir = Path(__file__).resolve().parent
-    sec_rule = base_dir / "sample_rules" / "security_rules.json"
-    style_rule = base_dir / "sample_rules" / "style_rules.json"
-    prompt_file = base_dir / "sample_rules" / "custom_audit_prompt.txt"
-
-    if not sec_rule.exists():
-        print(f"スキップ: サンプル規約ファイル {sec_rule} が見つかりません。")
-        return
-
-    # Python の requests や httpx を使わない標準ライブラリでの multipart 構築例
-    import mimetypes
-    boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    
-    body = bytearray()
-
-    def add_field(name, value):
-        body.extend(f"--{boundary}\r\n".encode("utf-8"))
-        body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
-        body.extend(f"{value}\r\n".encode("utf-8"))
-
-    def add_file(field_name, file_path):
-        filename = Path(file_path).name
-        content = Path(file_path).read_bytes()
-        body.extend(f"--{boundary}\r\n".encode("utf-8"))
-        body.extend(f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'.encode("utf-8"))
-        body.extend(b"Content-Type: application/octet-stream\r\n\r\n")
-        body.extend(content)
-        body.extend(b"\r\n")
-
-    add_field("backend_type", "ollama")
-    add_field("base_url", "http://host.docker.internal:11434")
-    add_field("model", "qwen3.5:9b")
-    add_field("code_text", "def unsafe(u):\n    return f'SELECT * FROM acc WHERE id={u}'")
-    add_field("code_filename", "account_query.py")
-
-    # 複数ルールのアップロード
-    add_file("rule_files", sec_rule)
-    add_file("rule_files", style_rule)
-
-    # プロンプトファイルのアップロード
-    if prompt_file.exists():
-        add_file("prompt_file", prompt_file)
-
-    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
-
-    req = urllib.request.Request(
-        url,
-        data=bytes(body),
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}
+def main():
+    parser = argparse.ArgumentParser(
+        description="AI Code Rule Checker - CLI実行スクリプト",
+        formatter_class=argparse.RawTextHelpFormatter
     )
 
-    try:
-        print(f"アップロード中: {url}...")
-        with urllib.request.urlopen(req, timeout=300) as res:
-            res_data = json.loads(res.read().decode("utf-8"))
-            print("\n[レスポンスステータス]:", res_data.get("status"))
-            print("\n--- レポート内容 (先頭一部抜粋) ---")
-            report = res_data.get("report", "")
-            print(report[:800] + ("..." if len(report) > 800 else ""))
-    except urllib.error.HTTPError as e:
-        print(f"HTTPエラー発生 ({e.code}):", e.read().decode("utf-8", errors="replace"))
-    except Exception as e:
-        print("エラー発生:", str(e))
+    # 必須の引数
+    parser.add_argument(
+        "-c", "--code",
+        required=True,
+        type=Path,
+        help="【必須】チェック対象ソースコードのフルパス (例: /path/to/main.c, /path/to/proc.pco)"
+    )
+    parser.add_argument(
+        "-r", "--rules-dir",
+        required=True,
+        type=Path,
+        help="【必須】規約JSONが格納されたディレクトリパス (直下の全 *.json を自動統合)"
+    )
+
+    # 任意の引数
+    parser.add_argument(
+        "-p", "--prompt",
+        type=Path,
+        default=None,
+        help="【任意】プロンプトテキストファイルのフルパス (未指定時は標準プロンプト)"
+    )
+    parser.add_argument(
+        "-s", "--server",
+        default="http://localhost:8030",
+        help="APIサーバーのURL (デフォルト: http://localhost:8030)"
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["ollama", "vllm"],
+        default="ollama",
+        help="LLMバックエンド種別 (デフォルト: ollama)"
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://host.docker.internal:11434",
+        help="LLMサーバーのエンドポイントURL (デフォルト: http://host.docker.internal:11434)"
+    )
+    parser.add_argument(
+        "-m", "--model",
+        default="qwen3.5:9b",
+        help="使用するモデル名 (デフォルト: qwen3.5:9b)"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=Path,
+        default=None,
+        help="レポートの保存先ファイルパス (デフォルト: report_<ソースコード名>.md)"
+    )
+
+    args = parser.parse_args()
+
+    run_code_check(
+        code_path=args.code,
+        rules_dir=args.rules_dir,
+        prompt_path=args.prompt,
+        server_url=args.server,
+        backend_type=args.backend,
+        base_url=args.base_url,
+        model=args.model,
+        output_path=args.output
+    )
 
 
 if __name__ == "__main__":
-    sample_verify_json()
-    sample_check_multipart()
+    main()
