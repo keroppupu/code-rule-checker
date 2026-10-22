@@ -11,6 +11,7 @@
   - REST API: CI/CDパイプラインなどから呼び出し可能なエンドポイント (`/api/check`, `/api/v1/verify`)。
   - MCP: **SSE (Server-Sent Events) トランスポート** に対応 (`/mcp/sse`)。Claude Desktop / Antigravity等のMCPクライアントからリモートまたはローカル接続可能。
   - **プロンプト外部ファイル対応**: テキストファイル（`.txt` / `.md`）に記述したカスタムプロンプトをWebUI・API・MCPから指定可能。
+- **高度なコード文脈理解（トランスフォーマー Self-Attention）**: 従来の構文チェックにとどまらず、因果関係や状態遷移（トランザクション境界、未定義ホスト変数の逆算推論など）を解析可能。詳細は [docs/context_understanding.md](docs/context_understanding.md) を参照。
 
 ---
 
