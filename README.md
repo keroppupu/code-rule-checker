@@ -25,6 +25,8 @@ code-rule-checker/
 ├── app.py                  # FastAPI + FastMCP SSE サーバー
 ├── checker.py              # LLM連携 & プロンプト構築ロジック
 ├── mcp_server.py           # スタンドアロン用MCPサーバー
+├── client_sample.py        # CLI実行用Pythonクライアント
+├── litellm_sample.py       # LiteLLM APIキー認証連携サンプル
 ├── templates/
 │   └── index.html          # Web UI テンプレート
 ├── sample_rules/           # サンプル規約JSON & プロンプト
