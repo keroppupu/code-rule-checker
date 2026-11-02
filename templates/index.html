@@ -40,15 +40,21 @@
             
             <!-- LLM Backend Configuration -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                <h2 class="text-base font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-server text-indigo-600"></i> LLM 接続設定 (LAN)
-                </h2>
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-server text-indigo-600"></i> LLM 接続設定 (LAN)
+                    </h2>
+                    <button type="button" id="btnSaveSettings" class="text-xs bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 px-2.5 py-1 rounded-lg border border-slate-300 hover:border-indigo-300 font-medium transition flex items-center gap-1">
+                        <i class="fa-solid fa-floppy-disk"></i> 設定を保存
+                    </button>
+                </div>
                 <div class="grid grid-cols-2 gap-3 mb-3">
                     <div>
                         <label class="block text-xs font-medium text-slate-600 mb-1">バックエンド</label>
                         <select id="backend_type" class="w-full text-sm border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500">
                             <option value="ollama" selected>Ollama</option>
                             <option value="vllm">vLLM (OpenAI API)</option>
+                            <option value="litellm">LiteLLM (OpenAI Proxy)</option>
                         </select>
                     </div>
                     <div>
@@ -56,10 +62,17 @@
                         <input type="text" id="model_name" value="qwen3.5:9b" placeholder="例: qwen2.5-coder:7b" class="w-full text-sm border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500">
                     </div>
                 </div>
-                <div>
+                <div class="mb-3">
                     <label class="block text-xs font-medium text-slate-600 mb-1">エンドポイント URL</label>
                     <input type="text" id="base_url" value="http://host.docker.internal:11434" placeholder="例: http://192.168.1.100:11434" class="w-full text-sm border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500">
-                    <p class="text-[11px] text-slate-500 mt-1">※Docker内からホストPCを見る場合は host.docker.internal を指定できます</p>
+                    <p class="text-[11px] text-slate-500 mt-1">※LiteLLM標準ポートは 4000 (例: http://host.docker.internal:4000)</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">API Key (LiteLLM等で必要な場合)</label>
+                    <input type="password" id="api_key" placeholder="sk-..." class="w-full text-sm border-slate-300 rounded-lg p-2 border focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div id="saveSuccessAlert" class="hidden mt-2 text-xs text-emerald-600 font-medium flex items-center gap-1">
+                    <i class="fa-solid fa-circle-check"></i> 設定をサーバとブラウザに保存しました
                 </div>
             </div>
 
@@ -223,6 +236,84 @@
         const downloadButtons = document.getElementById("downloadButtons");
         const btnDownloadMd = document.getElementById("btnDownloadMd");
         const btnDownloadHtml = document.getElementById("btnDownloadHtml");
+        const btnSaveSettings = document.getElementById("btnSaveSettings");
+        const saveSuccessAlert = document.getElementById("saveSuccessAlert");
+        const apiKeyInput = document.getElementById("api_key");
+        const backendSelect = document.getElementById("backend_type");
+        const baseUrlInput = document.getElementById("base_url");
+        const modelNameInput = document.getElementById("model_name");
+
+        // Load Settings on Start (from Server API with localStorage fallback)
+        async function initSettings() {
+            try {
+                const res = await fetch("/api/settings");
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.backend_type) backendSelect.value = data.backend_type;
+                    if (data.base_url) baseUrlInput.value = data.base_url;
+                    if (data.model) modelNameInput.value = data.model;
+                    if (data.api_key !== undefined) apiKeyInput.value = data.api_key;
+                    return;
+                }
+            } catch (e) {
+                console.warn("Server settings fetch failed, checking localStorage", e);
+            }
+
+            const localSaved = localStorage.getItem("code_rule_checker_settings");
+            if (localSaved) {
+                try {
+                    const parsed = json.parse(localSaved);
+                    if (parsed.backend_type) backendSelect.value = parsed.backend_type;
+                    if (parsed.base_url) baseUrlInput.value = parsed.base_url;
+                    if (parsed.model) modelNameInput.value = parsed.model;
+                    if (parsed.api_key) apiKeyInput.value = parsed.api_key;
+                } catch(e){}
+            }
+        }
+        initSettings();
+
+        // Backend change placeholder adjustment
+        backendSelect.addEventListener("change", () => {
+            const b = backendSelect.value;
+            if (b === "litellm") {
+                if (baseUrlInput.value === "http://host.docker.internal:11434") {
+                    baseUrlInput.value = "http://host.docker.internal:4000";
+                }
+            } else if (b === "ollama") {
+                if (baseUrlInput.value === "http://host.docker.internal:4000") {
+                    baseUrlInput.value = "http://host.docker.internal:11434";
+                }
+            }
+        });
+
+        // Save Settings Handler
+        btnSaveSettings.addEventListener("click", async () => {
+            const settings = {
+                backend_type: backendSelect.value,
+                base_url: baseUrlInput.value.trim(),
+                model: modelNameInput.value.trim(),
+                api_key: apiKeyInput.value.trim()
+            };
+
+            localStorage.setItem("code_rule_checker_settings", JSON.stringify(settings));
+
+            try {
+                const res = await fetch("/api/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(settings)
+                });
+                if (res.ok) {
+                    saveSuccessAlert.classList.remove("hidden");
+                    setTimeout(() => saveSuccessAlert.classList.add("hidden"), 3000);
+                } else {
+                    alert("設定の保存に失敗しました。");
+                }
+            } catch (err) {
+                saveSuccessAlert.classList.remove("hidden");
+                setTimeout(() => saveSuccessAlert.classList.add("hidden"), 3000);
+            }
+        });
 
         // Code File Select Handling
         codeDropZone.addEventListener("click", () => codeFileInput.click());
@@ -323,6 +414,10 @@
             formData.append("backend_type", backendType);
             formData.append("model", modelName);
             formData.append("base_url", baseUrl);
+            const apiKey = apiKeyInput.value.trim();
+            if (apiKey) {
+                formData.append("api_key", apiKey);
+            }
 
             if (codeFileStore) {
                 formData.append("code_file", codeFileStore);

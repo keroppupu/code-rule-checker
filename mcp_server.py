@@ -23,18 +23,20 @@ async def check_code_against_rules(
     base_url: str = "http://host.docker.internal:11434",
     model: str = "qwen3.5:9b",
     custom_instructions: Optional[str] = None,
-    prompt_file_path: Optional[str] = None
+    prompt_file_path: Optional[str] = None,
+    api_key: Optional[str] = None
 ) -> str:
     """
     ソースコードと複数のコーディング規約JSON文字列を受け取り、AIで整合性をチェックしてMarkdownレポートを返します。
     - code: チェック対象のソースコード
     - rules_json_strings: 各規約JSONの文字列表現のリスト
     - filename: ソースコードのファイル名 (例: main.py)
-    - backend_type: 'ollama' または 'vllm'
-    - base_url: エンドポイント (例: http://host.docker.internal:11434)
-    - model: 使用するモデル名 (例: qwen3.5:9b)
+    - backend_type: 'ollama', 'vllm', または 'litellm'
+    - base_url: エンドポイント (例: http://host.docker.internal:11434, http://localhost:4000)
+    - model: 使用するモデル名 (例: qwen3.5:9b, gpt-4o, claude-3-5-sonnet)
     - custom_instructions: 直接指定する追加プロンプト・指示
     - prompt_file_path: プロンプトが書かれたテキストファイルのパス (指定時はこちらを優先して読み込み)
+    - api_key: LiteLLM等の認証用APIキー (任意)
     """
     parsed_rules = []
     for s in rules_json_strings:
@@ -55,7 +57,8 @@ async def check_code_against_rules(
         base_url=base_url,
         model=model,
         custom_prompt=custom_instructions,
-        prompt_file_path=prompt_file_path
+        prompt_file_path=prompt_file_path,
+        api_key=api_key
     )
     return report
 

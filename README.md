@@ -4,7 +4,8 @@
 
 ## 主な特徴
 - **複数規約JSON対応**: セキュリティ規約、命名規約、スタイル規約など複数のJSON定義をまとめてアップロード可能。
-- **LAN上LLM連携**: Ollama (native API) および vLLM (OpenAI互換API) のエンドポイントとモデル名を自由に指定可能。
+- **LAN上LLM連携 (Ollama / vLLM / LiteLLM)**: Ollama (native API)、vLLM (OpenAI互換API)、および LiteLLM (OpenAI Proxy / ゲートウェイ) のエンドポイント・モデル名・APIキーを自由に指定可能。
+- **推論設定の永続化**: Web UIの「設定を保存」ボタンまたは `/api/settings` API から、バックエンド種別、エンドポイントURL、モデル名、APIキーをサーバー（`settings.json`）およびブラウザ（localStorage）に保存可能。次回アクセス時やAPIパラメータ省略時にも自動適用されます。
 - **Docker対応**: `docker-compose up` 一発でWebUI・APIサーバーが起動。
 - **Web UI & REST API & MCP**:
   - Web UI: ドラッグ＆ドロップ対応、Markdownプレビュー、Markdown/HTML形式でのダウンロード機能。

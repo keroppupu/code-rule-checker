@@ -1,3 +1,4 @@
+import os
 import json
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
@@ -25,18 +26,20 @@ async def check_code_against_rules(
     base_url: str = "http://host.docker.internal:11434",
     model: str = "qwen3.5:9b",
     custom_instructions: Optional[str] = None,
-    prompt_file_path: Optional[str] = None
+    prompt_file_path: Optional[str] = None,
+    api_key: Optional[str] = None
 ) -> str:
     """
     ソースコードと複数のコーディング規約JSON文字列を受け取り、AIで整合性をチェックしてMarkdownレポートを返します。
     - code: チェック対象のソースコード
     - rules_json_strings: 各規約JSONの文字列表現のリスト
     - filename: ソースコードのファイル名 (例: main.py)
-    - backend_type: 'ollama' または 'vllm'
-    - base_url: エンドポイント (例: http://host.docker.internal:11434)
-    - model: 使用するモデル名 (例: qwen3.5:9b)
+    - backend_type: 'ollama', 'vllm', または 'litellm'
+    - base_url: エンドポイント (例: http://host.docker.internal:11434, http://localhost:4000)
+    - model: 使用するモデル名 (例: qwen3.5:9b, gpt-4o, claude-3-5-sonnet)
     - custom_instructions: 直接指定する追加プロンプト・指示
     - prompt_file_path: プロンプトが書かれたテキストファイルのパス (指定時はこちらを優先して読み込み)
+    - api_key: LiteLLM等の認証用APIキー (任意)
     """
     parsed_rules = []
     for s in rules_json_strings:
@@ -57,7 +60,8 @@ async def check_code_against_rules(
         base_url=base_url,
         model=model,
         custom_prompt=custom_instructions,
-        prompt_file_path=prompt_file_path
+        prompt_file_path=prompt_file_path,
+        api_key=api_key
     )
     return report
 
@@ -71,13 +75,50 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 mcp_sse_app = mcp_server.sse_app(transport_security=None)
 app.mount("/mcp", mcp_sse_app)
 
+SETTINGS_FILE = "settings.json"
+
+class SettingsModel(BaseModel):
+    backend_type: str = "ollama"
+    base_url: str = "http://host.docker.internal:11434"
+    model: str = "qwen3.5:9b"
+    api_key: Optional[str] = ""
+
+def load_settings() -> dict:
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "backend_type": "ollama",
+        "base_url": "http://host.docker.internal:11434",
+        "model": "qwen3.5:9b",
+        "api_key": ""
+    }
+
+def save_settings(settings: dict):
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=2)
+
+@app.get("/api/settings")
+async def get_settings():
+    return load_settings()
+
+@app.post("/api/settings")
+async def update_settings(payload: SettingsModel):
+    settings_dict = payload.model_dump()
+    save_settings(settings_dict)
+    return {"status": "success", "settings": settings_dict}
+
 class CheckRequestJSON(BaseModel):
     code: str
     filename: Optional[str] = "input_code.txt"
     rules: List[dict]
-    backend_type: str = "ollama"  # "ollama" または "vllm"
-    base_url: str = "http://host.docker.internal:11434"
-    model: str = "qwen3.5:9b"
+    backend_type: Optional[str] = None  # "ollama", "vllm", "litellm"
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
     custom_prompt: Optional[str] = None
     prompt_file_path: Optional[str] = None
 
@@ -93,9 +134,10 @@ async def api_check_form(
     rule_files: List[UploadFile] = File(...),
     prompt_file: Optional[UploadFile] = File(None),
     prompt_file_path: Optional[str] = Form(None),
-    backend_type: str = Form("ollama"),
-    base_url: str = Form("http://host.docker.internal:11434"),
-    model: str = Form("qwen3.5:9b"),
+    backend_type: Optional[str] = Form(None),
+    base_url: Optional[str] = Form(None),
+    model: Optional[str] = Form(None),
+    api_key: Optional[str] = Form(None),
     custom_prompt: Optional[str] = Form(None)
 ):
     """WebUIからのMultipart/Formアップロード処理"""
@@ -139,16 +181,24 @@ async def api_check_form(
     if not rules_list:
         raise HTTPException(status_code=400, detail="規約JSONが空または指定されていません。")
 
+    # 設定値のフォールバック (保存されたデフォルト設定)
+    saved = load_settings()
+    eff_backend = backend_type or saved.get("backend_type", "ollama")
+    eff_base_url = base_url or saved.get("base_url", "http://host.docker.internal:11434")
+    eff_model = model or saved.get("model", "qwen3.5:9b")
+    eff_api_key = api_key if api_key is not None else saved.get("api_key", "")
+
     try:
         report = await run_code_check(
             code_filename=actual_filename,
             code_content=code_str,
             rules=rules_list,
-            backend_type=backend_type,
-            base_url=base_url,
-            model=model,
+            backend_type=eff_backend,
+            base_url=eff_base_url,
+            model=eff_model,
             custom_prompt=effective_custom_prompt,
-            prompt_file_path=prompt_file_path
+            prompt_file_path=prompt_file_path,
+            api_key=eff_api_key
         )
         return {"status": "success", "filename": actual_filename, "report": report}
     except Exception as e:
@@ -157,16 +207,23 @@ async def api_check_form(
 @app.post("/api/v1/verify")
 async def api_verify_json(payload: CheckRequestJSON):
     """API直接呼び出し用エンドポイント"""
+    saved = load_settings()
+    eff_backend = payload.backend_type or saved.get("backend_type", "ollama")
+    eff_base_url = payload.base_url or saved.get("base_url", "http://host.docker.internal:11434")
+    eff_model = payload.model or saved.get("model", "qwen3.5:9b")
+    eff_api_key = payload.api_key if payload.api_key is not None else saved.get("api_key", "")
+
     try:
         report = await run_code_check(
             code_filename=payload.filename or "input_code.txt",
             code_content=payload.code,
             rules=payload.rules,
-            backend_type=payload.backend_type,
-            base_url=payload.base_url,
-            model=payload.model,
+            backend_type=eff_backend,
+            base_url=eff_base_url,
+            model=eff_model,
             custom_prompt=payload.custom_prompt,
-            prompt_file_path=payload.prompt_file_path
+            prompt_file_path=payload.prompt_file_path,
+            api_key=eff_api_key
         )
         return {"status": "success", "filename": payload.filename, "report": report}
     except Exception as e:

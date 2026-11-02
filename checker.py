@@ -28,10 +28,10 @@ async def call_llm(
     model: str,
     prompt: str,
     system_prompt: Optional[str] = None,
-    api_key: Optional[str] = "not-needed"
+    api_key: Optional[str] = None
 ) -> str:
     """
-    Ollama または vLLM (OpenAI互換API) にリクエストを送信して推論結果を取得します。
+    Ollama, vLLM, または LiteLLM (OpenAI互換API) にリクエストを送信して推論結果を取得します。
     """
     clean_base = base_url.rstrip("/")
     # LLMの生成処理時間に余裕を持たせるためタイムアウトを300秒(5分)に設定
@@ -39,8 +39,7 @@ async def call_llm(
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         if backend_type.lower() == "ollama":
-            # Ollama native API: /api/generate または /api/chat
-            # ここでは標準的な /api/chat または OpenAI互換 /v1/chat/completions が使えるが、汎用的に /api/chat を利用
+            # Ollama native API: /api/chat
             endpoint = f"{clean_base}/api/chat"
             messages = []
             if system_prompt:
@@ -52,13 +51,16 @@ async def call_llm(
                 "messages": messages,
                 "stream": False
             }
-            res = await client.post(endpoint, json=payload)
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            res = await client.post(endpoint, json=payload, headers=headers)
             res.raise_for_status()
             data = res.json()
             return data.get("message", {}).get("content", "")
 
-        elif backend_type.lower() == "vllm" or backend_type.lower() == "openai":
-            # vLLM / OpenAI compatible chat completions
+        elif backend_type.lower() in ("vllm", "litellm", "openai"):
+            # vLLM / LiteLLM / OpenAI compatible chat completions
             endpoint = f"{clean_base}/v1/chat/completions"
             messages = []
             if system_prompt:
@@ -90,7 +92,8 @@ async def run_code_check(
     base_url: str,
     model: str,
     custom_prompt: Optional[str] = None,
-    prompt_file_path: Optional[str] = None
+    prompt_file_path: Optional[str] = None,
+    api_key: Optional[str] = None
 ) -> str:
     formatted_rules = []
     for idx, rule in enumerate(rules, 1):
@@ -132,4 +135,4 @@ async def run_code_check(
         )
 
     system_prompt = "あなたはソフトウェア品質とコーディング標準の専門家です。客観的かつ建設的なフィードバックを提示してください。"
-    return await call_llm(backend_type, base_url, model, prompt, system_prompt=system_prompt)
+    return await call_llm(backend_type, base_url, model, prompt, system_prompt=system_prompt, api_key=api_key)

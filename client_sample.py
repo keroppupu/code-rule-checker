@@ -30,9 +30,10 @@ def run_code_check(
     rules_dir: Path,
     prompt_path: Optional[Path] = None,
     server_url: str = "http://localhost:8030",
-    backend_type: str = "ollama",
-    base_url: str = "http://host.docker.internal:11434",
-    model: str = "qwen3.5:9b",
+    backend_type: Optional[str] = None,
+    base_url: Optional[str] = None,
+    model: Optional[str] = None,
+    api_key: Optional[str] = None,
     output_path: Optional[Path] = None
 ):
     # 1. ソースコードファイルの存在確認と読み込み
@@ -98,14 +99,19 @@ def run_code_check(
         "code": code_content,
         "filename": code_path.name,
         "rules": combined_rules,
-        "backend_type": backend_type,
-        "base_url": base_url,
-        "model": model,
         "custom_prompt": custom_prompt_text
     }
+    if backend_type:
+        payload["backend_type"] = backend_type
+    if base_url:
+        payload["base_url"] = base_url
+    if model:
+        payload["model"] = model
+    if api_key:
+        payload["api_key"] = api_key
 
     print(f"[4/4] APIサーバーへ検証リクエストを送信中 ({api_endpoint})...")
-    print(f"      LLMバックエンド: {backend_type} ({model})")
+    print(f"      LLM設定: backend={backend_type or 'server default'}, model={model or 'server default'}")
     
     req = urllib.request.Request(
         api_endpoint,
@@ -176,19 +182,24 @@ def main():
     )
     parser.add_argument(
         "--backend",
-        choices=["ollama", "vllm"],
-        default="ollama",
-        help="LLMバックエンド種別 (デフォルト: ollama)"
+        choices=["ollama", "vllm", "litellm"],
+        default=None,
+        help="LLMバックエンド種別 (ollama, vllm, litellm。未指定時はサーバー設定値を使用)"
     )
     parser.add_argument(
         "--base-url",
-        default="http://host.docker.internal:11434",
-        help="LLMサーバーのエンドポイントURL (デフォルト: http://host.docker.internal:11434)"
+        default=None,
+        help="LLMサーバーのエンドポイントURL (未指定時はサーバー設定値を使用)"
     )
     parser.add_argument(
         "-m", "--model",
-        default="qwen3.5:9b",
-        help="使用するモデル名 (デフォルト: qwen3.5:9b)"
+        default=None,
+        help="使用するモデル名 (未指定時はサーバー設定値を使用)"
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="APIキー (LiteLLM等で必要な場合。未指定時はサーバー設定値を使用)"
     )
     parser.add_argument(
         "-o", "--output",
@@ -207,6 +218,7 @@ def main():
         backend_type=args.backend,
         base_url=args.base_url,
         model=args.model,
+        api_key=args.api_key,
         output_path=args.output
     )
 
