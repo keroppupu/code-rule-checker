@@ -27,6 +27,7 @@ code-rule-checker/
 ├── mcp_server.py           # スタンドアロン用MCPサーバー
 ├── client_sample.py        # CLI実行用Pythonクライアント
 ├── litellm_sample.py       # LiteLLM APIキー認証連携サンプル
+├── upload_check_sample.py  # 実ファイル群アップロード実行サンプル
 ├── templates/
 │   └── index.html          # Web UI テンプレート
 ├── sample_rules/           # サンプル規約JSON & プロンプト
