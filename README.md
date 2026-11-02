@@ -167,3 +167,45 @@ FastMCPプロトコルに対応しており、以下のコマンドまたはMCP�
 ```bash
 python mcp_server.py
 ```
+
+---
+
+## 稼働中Dockerコンテナ内のファイル差し替え手順 (ホットアップデート)
+
+稼働中のコンテナを破棄・再ビルドせずに、修正ファイルのみを直接コンテナ内へ上書き差し替えして反映させる手順です。
+（依存パッケージ `requirements.txt` の変更がないアップデートの場合に利用できます）
+
+### 1. 対象ファイルの差し替え (`docker cp` / `podman cp`)
+
+サーバー上の最新ファイルをコンテナ内の `/app` に直接コピーします：
+
+```bash
+# コンテナ名: code_rule_checker_app
+
+# ① Pythonスクリプトの差し替え
+docker cp app.py code_rule_checker_app:/app/app.py
+docker cp checker.py code_rule_checker_app:/app/checker.py
+docker cp mcp_server.py code_rule_checker_app:/app/mcp_server.py
+
+# ② WebUIテンプレートの差し替え
+docker cp templates/index.html code_rule_checker_app:/app/templates/index.html
+
+# ※ RHEL / Podman 環境の場合は 'docker' を 'podman' に置き換えて実行してください
+```
+
+### 2. コンテナの再起動
+
+プロセスを再読み込みさせるため、コンテナを再起動します（数秒で完了します）：
+
+```bash
+docker restart code_rule_checker_app
+# Podmanの場合: podman restart code_rule_checker_app
+```
+
+### 3. 反映確認
+
+```bash
+# 設定APIの応答確認
+curl -s http://localhost:8030/api/settings
+```
+設定JSONが返却され、ブラウザで Web UI にアクセスできれば差し替え完了です。
