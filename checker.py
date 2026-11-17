@@ -10,16 +10,18 @@ DEFAULT_PROMPT_TEMPLATE = """あなたは厳格かつ実用的なコードレビ
 
 ### 【対象ソースコード】
 ファイル名: {code_filename}
+文字コード前提: {code_encoding}
 ```
 {code_content}
 ```
 
 ### 【指示事項】
 1. ソースコードが提示された各規約に準拠しているかを精査してください。
-2. 規約違反または改善推奨箇所がある場合、該当行番号・違反内容・理由・具体的な修正コード案（Before / After）を明示してください。
-3. 規約に準拠している良い点についても評価してください。
-4. 全体の適合度スコア（0〜100%）および総合サマリーを提示してください。
-5. 出力フォーマットは読みやすいMarkdown形式（表や見出し、コードブロックを活用）で回答してください。
+2. 対象ソースコードの文字コードは「{code_encoding}」です。文字コード規約（Shift_JIS/CP932、全角・半角文字の扱い、日本語コメント、PIC X文字列のバイト長等）がある場合は、Shift_JIS（2バイト文字やASCII1バイト長など）としての文字コード前提・規約に厳格に沿って評価してください。
+3. 規約違反または改善推奨箇所がある場合、該当行番号・違反内容・理由・具体的な修正コード案（Before / After）を明示してください。
+4. 規約に準拠している良い点についても評価してください。
+5. 全体の適合度スコア（0〜100%）および総合サマリーを提示してください。
+6. 出力フォーマットは読みやすいMarkdown形式（表や見出し、コードブロックを活用）で回答してください。
 """
 
 async def call_llm(
@@ -93,7 +95,8 @@ async def run_code_check(
     model: str,
     custom_prompt: Optional[str] = None,
     prompt_file_path: Optional[str] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    code_encoding: str = "Shift_JIS (CP932)"
 ) -> str:
     formatted_rules = []
     for idx, rule in enumerate(rules, 1):
@@ -117,19 +120,21 @@ async def run_code_check(
     if prompt_template:
         # プレースホルダがある場合は安全に置換、なければ末尾に追加
         # str.format だとプロンプト中の {json_key} 等で KeyError や ValueError が発生するため安全に replace
-        if "{code_content}" in prompt_template or "{rules_content}" in prompt_template or "{code_filename}" in prompt_template:
+        if any(ph in prompt_template for ph in ("{code_content}", "{rules_content}", "{code_filename}", "{code_encoding}")):
             prompt = (
                 prompt_template
                 .replace("{code_filename}", code_filename)
+                .replace("{code_encoding}", code_encoding)
                 .replace("{code_content}", code_content)
                 .replace("{rules_content}", rules_content)
             )
         else:
-            prompt = f"{prompt_template}\n\n### 規約:\n{rules_content}\n\n### 対象コード({code_filename}):\n{code_content}"
+            prompt = f"{prompt_template}\n\n### 規約:\n{rules_content}\n\n### 対象コード({code_filename} / 文字コード:{code_encoding}):\n{code_content}"
     else:
         prompt = (
             DEFAULT_PROMPT_TEMPLATE
             .replace("{code_filename}", code_filename)
+            .replace("{code_encoding}", code_encoding)
             .replace("{code_content}", code_content)
             .replace("{rules_content}", rules_content)
         )

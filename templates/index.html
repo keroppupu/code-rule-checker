@@ -78,9 +78,20 @@
 
             <!-- Upload Code -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                <h2 class="text-base font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-code text-indigo-600"></i> ソースコード
-                </h2>
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-code text-indigo-600"></i> ソースコード
+                    </h2>
+                    <div class="flex items-center gap-1.5">
+                        <label for="code_encoding_select" class="text-xs text-slate-500 font-medium">文字コード:</label>
+                        <select id="code_encoding_select" class="text-xs border-slate-300 rounded px-2 py-1 border bg-white focus:ring-1 focus:ring-indigo-500">
+                            <option value="auto" selected>自動判定 (COBOLはSJIS優先)</option>
+                            <option value="cp932">Shift_JIS (CP932/MS932)</option>
+                            <option value="utf-8">UTF-8</option>
+                            <option value="euc-jp">EUC-JP</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-lg p-4 text-center cursor-pointer transition-colors bg-slate-50" id="codeDropZone">
                     <i class="fa-solid fa-file-code text-2xl text-slate-400 mb-1"></i>
                     <p class="text-xs text-slate-600" id="codeFileNameDisplay">ファイルをドラッグ＆ドロップ または クリックして選択</p>
@@ -140,9 +151,12 @@
                 
                 <!-- Action Bar -->
                 <div class="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 gap-2">
-                    <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
-                        <i class="fa-solid fa-clipboard-check text-emerald-600"></i> 検証レポート
-                    </h2>
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-clipboard-check text-emerald-600"></i> 検証レポート
+                        </h2>
+                        <span id="detectedEncodingBadge" class="hidden text-[11px] bg-slate-100 text-slate-600 font-mono px-2 py-0.5 rounded border border-slate-200"></span>
+                    </div>
                     <div class="flex items-center gap-2" id="downloadButtons" style="display: none;">
                         <button id="btnDownloadMd" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg border border-slate-300 flex items-center gap-1.5 transition">
                             <i class="fa-solid fa-download"></i> Markdown
@@ -418,6 +432,10 @@
             if (apiKey) {
                 formData.append("api_key", apiKey);
             }
+            const encodingSelect = document.getElementById("code_encoding_select").value;
+            if (encodingSelect && encodingSelect !== "auto") {
+                formData.append("code_encoding", encodingSelect);
+            }
 
             if (codeFileStore) {
                 formData.append("code_file", codeFileStore);
@@ -464,6 +482,15 @@
 
                 const data = await response.json();
                 lastReportMarkdown = data.report;
+
+                // 文字コードバッジの表示
+                const encodingBadge = document.getElementById("detectedEncodingBadge");
+                if (data.encoding) {
+                    encodingBadge.textContent = "文字コード: " + data.encoding;
+                    encodingBadge.classList.remove("hidden");
+                } else {
+                    encodingBadge.classList.add("hidden");
+                }
 
                 // Render Markdown to HTML
                 reportContent.innerHTML = marked.parse(lastReportMarkdown);

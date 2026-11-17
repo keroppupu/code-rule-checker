@@ -34,19 +34,48 @@ def run_code_check(
     base_url: Optional[str] = None,
     model: Optional[str] = None,
     api_key: Optional[str] = None,
+    code_encoding: Optional[str] = None,
     output_path: Optional[Path] = None
 ):
-    # 1. ソースコードファイルの存在確認と読み込み
+    # 1. ソースコードファイルの存在確認と読み込み (Shift_JIS対応)
     if not code_path.is_file():
         print(f"エラー: 指定されたソースコードファイルが存在しません: {code_path}", file=sys.stderr)
         sys.exit(1)
 
     print(f"[1/4] ソースコードを読み込み中: {code_path.resolve()}")
-    try:
-        code_content = code_path.read_text(encoding="utf-8", errors="replace")
-    except Exception as e:
-        print(f"エラー: ソースコードの読み取りに失敗しました: {e}", file=sys.stderr)
-        sys.exit(1)
+    raw_code = code_path.read_bytes()
+    is_cobol = any(code_path.name.lower().endswith(ext) for ext in ('.cbl', '.cob', '.pco', '.cpy', '.cobol'))
+
+    detected_encoding = "UTF-8"
+    if code_encoding:
+        enc_norm = code_encoding.lower().replace("-", "_").replace(" ", "")
+        if enc_norm in ("sjis", "shift_jis", "cp932", "ms932"):
+            code_content = raw_code.decode("cp932", errors="replace")
+            detected_encoding = "Shift_JIS (CP932)"
+        else:
+            code_content = raw_code.decode(code_encoding, errors="replace")
+            detected_encoding = code_encoding
+    elif is_cobol:
+        # COBOLファイルはShift_JISを優先デコード
+        try:
+            code_content = raw_code.decode("cp932")
+            detected_encoding = "Shift_JIS (CP932)"
+        except UnicodeDecodeError:
+            try:
+                code_content = raw_code.decode("utf-8")
+                detected_encoding = "UTF-8"
+            except UnicodeDecodeError:
+                code_content = raw_code.decode("cp932", errors="replace")
+                detected_encoding = "Shift_JIS (CP932/fallback)"
+    else:
+        try:
+            code_content = raw_code.decode("utf-8")
+            detected_encoding = "UTF-8"
+        except UnicodeDecodeError:
+            code_content = raw_code.decode("cp932", errors="replace")
+            detected_encoding = "Shift_JIS (CP932)"
+
+    print(f"      文字コード判定: {detected_encoding}")
 
     # 2. 規約ディレクトリ内の全JSONファイルの走査と読み込み
     if not rules_dir.is_dir():
@@ -99,7 +128,8 @@ def run_code_check(
         "code": code_content,
         "filename": code_path.name,
         "rules": combined_rules,
-        "custom_prompt": custom_prompt_text
+        "custom_prompt": custom_prompt_text,
+        "code_encoding": detected_encoding
     }
     if backend_type:
         payload["backend_type"] = backend_type
@@ -202,6 +232,11 @@ def main():
         help="APIキー (LiteLLM等で必要な場合。未指定時はサーバー設定値を使用)"
     )
     parser.add_argument(
+        "--encoding",
+        default=None,
+        help="ソースコードの文字コード (例: cp932, utf-8。COBOLファイルは自動でShift_JIS優先判定)"
+    )
+    parser.add_argument(
         "-o", "--output",
         type=Path,
         default=None,
@@ -219,6 +254,7 @@ def main():
         base_url=args.base_url,
         model=args.model,
         api_key=args.api_key,
+        code_encoding=args.encoding,
         output_path=args.output
     )
 

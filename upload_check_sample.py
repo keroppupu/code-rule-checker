@@ -89,6 +89,7 @@ def run_upload_check(
     base_url: Optional[str] = None,
     model: Optional[str] = None,
     api_key: Optional[str] = None,
+    code_encoding: Optional[str] = None,
     output_path: Optional[Path] = None
 ):
     # 1. ソースコードの存在確認
@@ -127,6 +128,8 @@ def run_upload_check(
         fields["model"] = model
     if api_key:
         fields["api_key"] = api_key
+    if code_encoding:
+        fields["code_encoding"] = code_encoding
 
     # 4. アップロード対象ファイルの組み立て
     files = [("code_file", code_path)]
@@ -239,6 +242,11 @@ def main():
         help="APIキー (LiteLLM等で必要な場合。未指定時はサーバー設定値を使用)"
     )
     parser.add_argument(
+        "--encoding",
+        default=None,
+        help="ソースコードの文字コード (例: cp932, utf-8。COBOLファイルは自動でShift_JIS優先判定)"
+    )
+    parser.add_argument(
         "-o", "--output",
         type=Path,
         default=None,
@@ -265,6 +273,7 @@ def main():
         base_url=args.base_url,
         model=args.model,
         api_key=args.api_key,
+        code_encoding=args.encoding,
         output_path=args.output
     )
 

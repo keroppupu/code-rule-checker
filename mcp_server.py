@@ -24,19 +24,21 @@ async def check_code_against_rules(
     model: str = "qwen3.5:9b",
     custom_instructions: Optional[str] = None,
     prompt_file_path: Optional[str] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    code_encoding: Optional[str] = None
 ) -> str:
     """
     ソースコードと複数のコーディング規約JSON文字列を受け取り、AIで整合性をチェックしてMarkdownレポートを返します。
     - code: チェック対象のソースコード
     - rules_json_strings: 各規約JSONの文字列表現のリスト
-    - filename: ソースコードのファイル名 (例: main.py)
+    - filename: ソースコードのファイル名 (例: main.py, sample.cbl, proc.pco)
     - backend_type: 'ollama', 'vllm', または 'litellm'
     - base_url: エンドポイント (例: http://host.docker.internal:11434, http://localhost:4000)
     - model: 使用するモデル名 (例: qwen3.5:9b, gpt-4o, claude-3-5-sonnet)
     - custom_instructions: 直接指定する追加プロンプト・指示
     - prompt_file_path: プロンプトが書かれたテキストファイルのパス (指定時はこちらを優先して読み込み)
     - api_key: LiteLLM等の認証用APIキー (任意)
+    - code_encoding: ソースコードの文字コード (例: "Shift_JIS", "UTF-8"。COBOL拡張子の場合は自動でShift_JISと判定)
     """
     parsed_rules = []
     for s in rules_json_strings:
@@ -49,6 +51,10 @@ async def check_code_against_rules(
         except Exception as e:
             return f"Error parsing rule JSON: {str(e)}"
 
+    # COBOLファイル判定または明示指定
+    is_cobol = any(filename.lower().endswith(ext) for ext in ('.cbl', '.cob', '.pco', '.cpy', '.cobol'))
+    eff_encoding = code_encoding or ("Shift_JIS (CP932)" if is_cobol else "UTF-8 / Shift_JIS")
+
     report = await run_code_check(
         code_filename=filename,
         code_content=code,
@@ -58,7 +64,8 @@ async def check_code_against_rules(
         model=model,
         custom_prompt=custom_instructions,
         prompt_file_path=prompt_file_path,
-        api_key=api_key
+        api_key=api_key,
+        code_encoding=eff_encoding
     )
     return report
 
