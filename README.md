@@ -184,6 +184,7 @@ python mcp_server.py
 
 稼働中のコンテナを破棄・再ビルドせずに、修正ファイルのみを直接コンテナ内へ上書き差し替えして反映させる手順です。
 （依存パッケージ `requirements.txt` の変更がないアップデートの場合に利用できます）
+詳細な手順書は [docs/hot_update_cobol_sjis_java.md](docs/hot_update_cobol_sjis_java.md) を参照してください。
 
 ### 1. 対象ファイルの差し替え (`docker cp` / `podman cp`)
 
