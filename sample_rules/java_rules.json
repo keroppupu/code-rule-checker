@@ -1,0 +1,32 @@
+[
+  {
+    "id": "JAVA-SEC-001",
+    "name": "SQLインジェクション対策（PreparedStatement / JPAの利用）",
+    "severity": "critical",
+    "description": "SQL実行時に文字列連結（+演算子やString.format、StringBuilder）でクエリを構築してはならない。必ずPreparedStatementのプレースホルダ（?）、またはJPA / MyBatis等のパラメータバインドを使用すること。"
+  },
+  {
+    "id": "JAVA-SEC-002",
+    "name": "ハードコードされた機密情報の排除",
+    "severity": "critical",
+    "description": "パスワード、DB接続情報、APIキー、秘密鍵などをJavaコード内に平文でハードコードしてはならない。環境変数、System.getenv()、または外部プロパティファイル（application.yml等）から注入すること。"
+  },
+  {
+    "id": "JAVA-RES-001",
+    "name": "リソースの確実なクローズ（try-with-resourcesの利用）",
+    "severity": "major",
+    "description": "AutoCloseableを実装するリソース（Connection、Statement、ResultSet、InputStream、OutputStreamなど）は、メモリリークや接続枯渇を防ぐため、try-with-resources文を用いて自動的・確実にクローズすること。"
+  },
+  {
+    "id": "JAVA-EXC-001",
+    "name": "適切な例外処理（空catch / printStackTraceの禁止）",
+    "severity": "major",
+    "description": "catchブロックを空にしたり、e.printStackTrace()やSystem.out.println()で済ませてはならない。SLF4J / Logback等の適切なロガーを用いてエラーログを出力するか、適切な業務例外にラップして再スローすること。"
+  },
+  {
+    "id": "JAVA-CONV-001",
+    "name": "Java標準命名規約とNullPointerException対策",
+    "severity": "minor",
+    "description": "クラス名はUpperCamelCase、メソッド・変数名はlowerCamelCase、定数はUPPER_SNAKE_CASEとすること。また、equals呼び出し時の定数先行（CONSTANT.equals(variable)）やOptional/Objects.requireNonNullの活用によりNPEを未然に防止すること。"
+  }
+]

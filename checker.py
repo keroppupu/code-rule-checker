@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 
 DEFAULT_PROMPT_TEMPLATE = """あなたは厳格かつ実用的なコードレビュアーです。
 以下の「コーディング規約（JSON定義）」に基づいて、提出された「ソースコード」を詳細に検証してください。
+対象言語がJava、C/Pro*C、COBOL/Pro*COBOL、Pythonなど特定言語の場合、その言語仕様やベストプラクティス（Javaの場合はメモリ管理、リソース解放、例外処理、命名規則など）を考慮して厳格に評価してください。
 
 ### 【コーディング規約定義】
 {rules_content}

@@ -3,7 +3,9 @@
 ソースコードと複数のコーディング規約（JSONファイル）を受け取り、LAN上のOllamaまたはvLLMによる生成AI推論を用いて規約準拠チェックを実施・レポート出力するアプリケーションです。
 
 ## 主な特徴
-- **Shift_JIS (CP932) / COBOL対応**: COBOL拡張子（`.cbl`, `.cob`, `.pco`, `.cpy`, `.cobol`）のソースコードをアップロードした際、自動的にShift_JIS (CP932) としてバイト列を破損させずに読み込み。Web UIおよびAPIから文字コード（Auto/Shift_JIS/UTF-8/EUC-JP）を指定可能。LLMチェック時にも「文字コード前提: Shift_JIS」として全角2バイト長などの規約を正確に検査。
+- **多言語・Java・COBOL・C・Python対応**:
+  - **Java**: try-with-resources によるリソースリーク防止、PreparedStatement によるSQLインジェクション対策、適切な例外処理（空catch/printStackTrace禁止）、標準命名規約（CamelCase）、NPE対策など Java 固有のベストプラクティスを精密検証。サンプル規約（`sample_rules/java_rules.json`）同梱。
+  - **Shift_JIS (CP932) / COBOL対応**: COBOL拡張子（`.cbl`, `.cob`, `.pco`, `.cpy`, `.cobol`）のソースコードをアップロードした際、自動的にShift_JIS (CP932) としてバイト列を破損させずに読み込み。Web UIおよびAPIから文字コード（Auto/Shift_JIS/UTF-8/EUC-JP）を指定可能。LLMチェック時にも「文字コード前提: Shift_JIS」として全角2バイト長などの規約を正確に検査。
 - **複数規約JSON対応**: セキュリティ規約、命名規約、スタイル規約など複数のJSON定義をまとめてアップロード可能。
 - **LAN上LLM連携 (Ollama / vLLM / LiteLLM)**: Ollama (native API)、vLLM (OpenAI互換API)、および LiteLLM (OpenAI Proxy / ゲートウェイ) のエンドポイント・モデル名・APIキーを自由に指定可能。
 - **推論設定の永続化**: Web UIの「設定を保存」ボタンまたは `/api/settings` API から、バックエンド種別、エンドポイントURL、モデル名、APIキーをサーバー（`settings.json`）およびブラウザ（localStorage）に保存可能。次回アクセス時やAPIパラメータ省略時にも自動適用されます。
@@ -34,6 +36,10 @@ code-rule-checker/
 ├── sample_rules/           # サンプル規約JSON & プロンプト
 │   ├── security_rules.json
 │   ├── style_rules.json
+│   ├── cobol_rules.json
+│   ├── java_rules.json     # Java用コーディング規約 (SQLi, try-with-resources, 例外処理, 命名等)
+│   ├── sample_user_service.java # Javaサンプル検証コード
+│   ├── sample_sjis_cobol.cbl
 │   └── custom_audit_prompt.txt
 └── README.md
 ```
